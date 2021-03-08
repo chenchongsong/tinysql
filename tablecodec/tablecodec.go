@@ -43,6 +43,7 @@ const (
 	RecordRowKeyLen       = prefixLen + idLen /*handle*/
 	tablePrefixLength     = 1
 	recordPrefixSepLength = 2
+	indexPrefixSepLength = 2
 )
 
 // TableSplitKeyLen is the length of key 't{table_id}' which is used for table split.
@@ -70,9 +71,21 @@ func EncodeRowKeyWithHandle(tableID int64, handle int64) kv.Key {
 }
 
 // DecodeRecordKey decodes the key and gets the tableID, handle.
+// 这里handle是针对行(hang)的
 func DecodeRecordKey(key kv.Key) (tableID int64, handle int64, err error) {
 	/* Your code here */
-	return
+	if len(key) != RecordRowKeyLen {
+		return 0, 0, errors.New("insufficient bytes to decode value")
+	}
+	key = key[tablePrefixLength:]
+	if key, tableID, err = codec.DecodeInt(key); err != nil {
+		return 0, 0, err
+	}
+	key = key[recordPrefixSepLength:]
+	if _, handle, err = codec.DecodeInt(key); err != nil {
+		return 0, 0, err
+	}
+	return tableID, handle, nil
 }
 
 // appendTableIndexPrefix appends table index prefix  "t[tableID]_i".
@@ -95,6 +108,18 @@ func EncodeIndexSeekKey(tableID int64, idxID int64, encodedValue []byte) kv.Key 
 // DecodeIndexKeyPrefix decodes the key and gets the tableID, indexID, indexValues.
 func DecodeIndexKeyPrefix(key kv.Key) (tableID int64, indexID int64, indexValues []byte, err error) {
 	/* Your code here */
+	if len(key) < prefixLen + idLen {
+		return 0, 0, nil, errors.New("insufficient bytes to decode value")
+	}
+	key = key[tablePrefixLength:]
+	if key, tableID, err = codec.DecodeInt(key); err != nil {
+		return 0, 0, nil, err
+	}
+	key = key[indexPrefixSepLength:]
+	if key, indexID, err = codec.DecodeInt(key); err != nil {
+		return 0, 0, nil, err
+	}
+	indexValues = key
 	return tableID, indexID, indexValues, nil
 }
 

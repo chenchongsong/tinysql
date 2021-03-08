@@ -67,6 +67,10 @@ tablecodec 的主要代码位于 [tablecodec.go](https://github.com/pingcap-incu
 ## 测试
 
 通过 [tablecodec](https://github.com/pingcap-incubator/tinysql/blob/course/tablecodec) 下所有测试。
+```
+cd tabelcodec
+go test .
+```
 
 ## 评分
 
