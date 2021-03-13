@@ -12,9 +12,13 @@
 
 完成 `JoinTable` 的实现，你可以利用 parser test 里失败的测试确定需要补充哪些语法部分。
 
+具体做法：
+1. 修改`parser/parser.y`
+2. 执行`cd parser && make all`，以重新生成`parser/parser.go`
+
 ## 测试
 
-通过测试 `TestDMLStmt`。
+执行`cd parser && go test -v .` 并通过测试 `TestDMLStmt`。
 
 ## 评分
 
