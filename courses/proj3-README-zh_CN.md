@@ -40,3 +40,11 @@ TinySQL 中的代码主要在包目录 `ddl` 中。其中下述文件包含了 `
 ## 测试
 
 通过单元测试 `TestColumnChange` 以及 `TestDropColumn`。
+
+```
+cd ddl
+go test -v -check.f=TestColumnChange .
+go test -v -check.f=TestDropColumn .
+```
+
+测试flag参见 [check源码](https://github.com/pingcap/check/blob/master/run.go)
