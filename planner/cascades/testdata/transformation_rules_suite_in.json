@@ -1,6 +1,6 @@
 [
   {
-    "name": "TestPredicatePushDown",
+    "name": "TestRulePredicatePushDown",
     "cases": [
       "select a, max(b) from t group by a having a > 1",
       "select a, avg(b) from t group by a having a > 1 and max(b) > 10",
@@ -12,14 +12,14 @@
     ]
   },
   {
-    "name": "TestAggPushDownGather",
+    "name": "TestRuleAggPushDownGather",
     "cases": [
       "select b, sum(a) from t group by b",
       "select b, sum(a) from t group by c, b"
     ]
   },
   {
-    "name": "TestTopNRules",
+    "name": "TestRuleTopNRules",
     "cases": [
       "select b from t order by a limit 2",
       "select a+b from t order by a limit 1 offset 2",
@@ -28,7 +28,7 @@
     ]
   },
   {
-    "name": "TestProjectionElimination",
+    "name": "TestRuleProjectionElimination",
     "cases": [
       "select a, b from (select a, b from t) as t2",
       "select a+b from (select a, b from t) as t2",
@@ -36,7 +36,7 @@
     ]
   },
   {
-    "name": "TestMergeAggregationProjection",
+    "name": "TestRuleMergeAggregationProjection",
     "cases": [
       "select b, max(a) from (select a, c+d as b from t as t1) as t2 group by b",
       "select max(a) from (select c+d as b, a+c as a from t as t1) as t2",

@@ -74,7 +74,7 @@ func testGroupToString(input []string, output []struct {
 	}
 }
 
-func (s *testTransformationRuleSuite) TestAggPushDownGather(c *C) {
+func (s *testTransformationRuleSuite) TestRuleAggPushDownGather(c *C) {
 	s.optimizer.ResetTransformationRules(map[memo.Operand][]Transformation{
 		memo.OperandAggregation: {
 			NewRulePushAggDownGather(),
@@ -114,7 +114,7 @@ func (s *testTransformationRuleSuite) TestAggPushDownGather(c *C) {
 	}
 }
 
-func (s *testTransformationRuleSuite) TestPredicatePushDown(c *C) {
+func (s *testTransformationRuleSuite) TestRulePredicatePushDown(c *C) {
 	s.optimizer.ResetTransformationRules(map[memo.Operand][]Transformation{
 		memo.OperandSelection: {
 			NewRulePushSelDownTableScan(),
@@ -141,7 +141,7 @@ func (s *testTransformationRuleSuite) TestPredicatePushDown(c *C) {
 	testGroupToString(input, output, s, c)
 }
 
-func (s *testTransformationRuleSuite) TestTopNRules(c *C) {
+func (s *testTransformationRuleSuite) TestRuleTopNRules(c *C) {
 	s.optimizer.ResetTransformationRules(map[memo.Operand][]Transformation{
 		memo.OperandLimit: {
 			NewRuleTransformLimitToTopN(),
@@ -162,7 +162,7 @@ func (s *testTransformationRuleSuite) TestTopNRules(c *C) {
 	testGroupToString(input, output, s, c)
 }
 
-func (s *testTransformationRuleSuite) TestProjectionElimination(c *C) {
+func (s *testTransformationRuleSuite) TestRuleProjectionElimination(c *C) {
 	s.optimizer.ResetTransformationRules(map[memo.Operand][]Transformation{
 		memo.OperandProjection: {
 			NewRuleEliminateProjection(),
@@ -181,7 +181,7 @@ func (s *testTransformationRuleSuite) TestProjectionElimination(c *C) {
 	testGroupToString(input, output, s, c)
 }
 
-func (s *testTransformationRuleSuite) TestMergeAggregationProjection(c *C) {
+func (s *testTransformationRuleSuite) TestRuleMergeAggregationProjection(c *C) {
 	s.optimizer.ResetTransformationRules(map[memo.Operand][]Transformation{
 		memo.OperandAggregation: {
 			NewRuleMergeAggregationProjection(),

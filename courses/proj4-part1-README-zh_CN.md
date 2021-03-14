@@ -66,3 +66,12 @@ func findBestTask(p LogicalPlan, prop OrderProp) PhysicalPlan {
 
 通过 `transformation_rules_test.go` 中的测试以及 package `core` 下 `TestPredicatePushDown` 的测试
 
+```
+cd planner/cascades
+go test -v -check.f="TestRule*" .
+```
+
+```
+cd planner/core
+go test -v -check.f TestPredicatePushDown .
+```

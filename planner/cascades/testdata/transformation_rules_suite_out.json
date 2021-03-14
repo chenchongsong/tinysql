@@ -1,6 +1,6 @@
 [
   {
-    "Name": "TestPredicatePushDown",
+    "Name": "TestRulePredicatePushDown",
     "Cases": [
       {
         "SQL": "select a, max(b) from t group by a having a > 1",
@@ -111,7 +111,7 @@
     ]
   },
   {
-    "Name": "TestAggPushDownGather",
+    "Name": "TestRuleAggPushDownGather",
     "Cases": [
       {
         "SQL": "select b, sum(a) from t group by b",
@@ -152,7 +152,7 @@
     ]
   },
   {
-    "Name": "TestTopNRules",
+    "Name": "TestRuleTopNRules",
     "Cases": [
       {
         "SQL": "select b from t order by a limit 2",
@@ -220,7 +220,7 @@
     ]
   },
   {
-    "Name": "TestProjectionElimination",
+    "Name": "TestRuleProjectionElimination",
     "Cases": [
       {
         "SQL": "select a, b from (select a, b from t) as t2",
@@ -248,7 +248,7 @@
     ]
   },
   {
-    "Name": "TestMergeAggregationProjection",
+    "Name": "TestRuleMergeAggregationProjection",
     "Cases": [
       {
         "SQL": "select b, max(a) from (select a, c+d as b from t as t1) as t2 group by b",
