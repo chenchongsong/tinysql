@@ -204,6 +204,36 @@ type candidatePath struct {
 	isMatchProp  bool
 }
 
+// compareColumnSet will compares the two set. The last return value is used to indicate
+// if they are comparable, it is false when both two sets have columns that do not occur in the other.
+// When the second return value is true, the value of first:
+// (1) -1 means that `l` is a strict subset of `r`;
+// (2) 0 means that `l` equals to `r`;
+// (3) 1 means that `l` is a strict superset of `r`.
+func compareColumnSet(l, r *intsets.Sparse) (int, bool) {
+	lLen, rLen := l.Len(), r.Len()
+	if lLen < rLen {
+		// -1 is meaningful only when l.SubsetOf(r) is true.
+		return -1, l.SubsetOf(r)
+	}
+	if lLen == rLen {
+		// 0 is meaningful only when l.SubsetOf(r) is true.
+		return 0, l.SubsetOf(r)
+	}
+	// 1 is meaningful only when r.SubsetOf(l) is true.
+	return 1, r.SubsetOf(l)
+}
+
+func compareBool(l, r bool) int {
+	if l == r {
+		return 0
+	}
+	if l == false {
+		return -1
+	}
+	return 1
+}
+
 // compareCandidates is the core of skyline pruning. It compares the two candidate paths on three dimensions:
 // (1): the set of columns that occurred in the access condition,
 // (2): whether or not it matches the physical property
@@ -211,7 +241,19 @@ type candidatePath struct {
 // If `x` is not worse than `y` at all factors,
 // and there exists one factor that `x` is better than `y`, then `x` is better than `y`.
 func compareCandidates(lhs, rhs *candidatePath) int {
-	// TODO: implement the content according to the header comment.
+	setsResult, comparable := compareColumnSet(lhs.columnSet, rhs.columnSet)
+	if !comparable {
+		return 0
+	}
+	scanResult := compareBool(lhs.isSingleScan, rhs.isSingleScan)
+	matchResult := compareBool(lhs.isMatchProp, rhs.isMatchProp)
+	sum := setsResult + scanResult + matchResult
+	if setsResult >= 0 && scanResult >= 0 && matchResult >= 0 && sum > 0 {
+		return 1
+	}
+	if setsResult <= 0 && scanResult <= 0 && matchResult <= 0 && sum < 0 {
+		return -1
+	}
 	return 0
 }
 
@@ -271,10 +313,22 @@ func (ds *DataSource) skylinePruning(prop *property.PhysicalProperty) []*candida
 				continue
 			}
 		}
-		// TODO: Here is the pruning phase. Will prune the access path which is must worse than others.
-		//       You'll need to implement the content in function `compareCandidates`.
-		//       And use it to prune unnecessary paths.
-		candidates = append(candidates, currentCandidate)
+		// Here is the pruning phase. Will prune the access path which is must worse than others.
+		// Use `compareCandidates` here to prune unnecessary paths.
+		pruned := false
+		for i := len(candidates) - 1; i >= 0; i-- {
+			result := compareCandidates(candidates[i], currentCandidate)
+			if result == 1 {
+				pruned = true
+				// We can break here because the current candidate cannot prune others anymore.
+				break
+			} else if result == -1 {
+				candidates = append(candidates[:i], candidates[i+1:]...)
+			}
+		}
+		if !pruned {
+			candidates = append(candidates, currentCandidate)
+		}
 	}
 	return candidates
 }

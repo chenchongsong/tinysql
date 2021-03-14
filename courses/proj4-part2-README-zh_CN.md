@@ -10,6 +10,11 @@
 
 这里我们需要完成 `cmsketch.go` 中的 TODO 内容，并通过 `cmsketch_test.go` 中的测试
 
+```
+cd statistics
+go test -v -check.f="TestCMSketch*" .
+```
+
 ## Join Reorder
 
 如果我们不加修改的直接执行用户输入的 Join 的顺序，假设用户输入了 `select * from t1 joni t2 on ... join t3 on ...`，我们会按照先扫描 `t1`，然后和 `t2` 做 Join，然后和 `t3` 做 Join。这个顺序会在很多情况下表现的并不是特别好（一个简单的场景，`t1`, `t2` 特别大，而 `t3` 特别小，那么只要和 `t3` join 时可以过滤部分数据，先 Join `t1` 和 `t2` 势必没有先让 `t3` 和其中一个表 join 在性能上占优势）。
@@ -22,6 +27,10 @@
 - f[11] 来表示包含了节点 `3, 1, 0` 的最优的 Join Tree。
 - 转移方程则是 `f[group] = min{join{f[sub], f[group ^ sub])}` 这里 `sub` 是 `group` 二进制表示下的任意子集。
 
+```
+cd planner/core
+go test -v -check.f="TestDPReorder*" .
+```
 
 ## Access Path Selection
 
@@ -33,4 +42,8 @@
 
 这是一个启发式规则的筛选，用来筛除一些一定会差的选择分支。具体的筛选要求在 TiDB proposal 以及 `TODO` 注释的解释中有更详细的说明。你需要实现并通过 `TestSkylinePruning` 中的所有测试。实现的位置为 `find_best_task.go` 的 TODO 内容。
 
+```
+cd planner/core
+go test -v -check.f=TestSkylinePruning .
+```
 
