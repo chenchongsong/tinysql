@@ -90,5 +90,9 @@ Hash Aggregation 的执行阶段可分为如下图所示的 5 步：
 ## 评分
 
 完成 `aggregate_test.go` 中的测试
+```
+cd executor
+go test -v -check.f testSuiteAgg
+```
 
 

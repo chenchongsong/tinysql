@@ -74,14 +74,24 @@ func EncodeRowKeyWithHandle(tableID int64, handle int64) kv.Key {
 // 这里handle是针对行(hang)的
 func DecodeRecordKey(key kv.Key) (tableID int64, handle int64, err error) {
 	/* Your code here */
-	if len(key) != RecordRowKeyLen {
+	if len(key) < RecordRowKeyLen {
 		return 0, 0, errors.New("insufficient bytes to decode value")
 	}
+
+	if !hasTablePrefix(key) {
+		return 0, 0, errors.New("invalid record key")
+	}
 	key = key[tablePrefixLength:]
+
 	if key, tableID, err = codec.DecodeInt(key); err != nil {
 		return 0, 0, err
 	}
+
+	if !hasRecordPrefixSep(key) {
+		return 0, 0, errors.New("invalid record key")
+	}
 	key = key[recordPrefixSepLength:]
+
 	if _, handle, err = codec.DecodeInt(key); err != nil {
 		return 0, 0, err
 	}
@@ -111,11 +121,22 @@ func DecodeIndexKeyPrefix(key kv.Key) (tableID int64, indexID int64, indexValues
 	if len(key) < prefixLen + idLen {
 		return 0, 0, nil, errors.New("insufficient bytes to decode value")
 	}
+	// TODO: 以下内容改用 DecodeKeyHead
+
+	if !hasTablePrefix(key) {
+		return 0, 0, nil, errors.New("invalid index key")
+	}
 	key = key[tablePrefixLength:]
+
 	if key, tableID, err = codec.DecodeInt(key); err != nil {
 		return 0, 0, nil, err
 	}
+
+	if !hasIndexPrefixSep(key) {
+		return 0, 0, nil, errors.New("invalid index key")
+	}
 	key = key[indexPrefixSepLength:]
+
 	if key, indexID, err = codec.DecodeInt(key); err != nil {
 		return 0, 0, nil, err
 	}
@@ -185,6 +206,10 @@ func hasTablePrefix(key kv.Key) bool {
 
 func hasRecordPrefixSep(key kv.Key) bool {
 	return key[0] == recordPrefixSep[0] && key[1] == recordPrefixSep[1]
+}
+
+func hasIndexPrefixSep(key kv.Key) bool {
+	return key[0] == indexPrefixSep[0] && key[1] == indexPrefixSep[1]
 }
 
 // DecodeMetaKey decodes the key and get the meta key and meta field.

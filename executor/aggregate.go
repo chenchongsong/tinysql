@@ -15,6 +15,7 @@ package executor
 
 import (
 	"context"
+	"github.com/spaolacci/murmur3"
 	"sync"
 
 	"github.com/cznic/mathutil"
@@ -335,7 +336,8 @@ func (w *HashAggPartialWorker) updatePartialResult(ctx sessionctx.Context, sc *s
 		return err
 	}
 
-	partialResults := w.getPartialResult(sc, w.groupKey, w.partialResultsMap)
+	// 对 DataFetcher 发来数据执行预聚合计算，并将预聚合结果存储到 w.partialResultMap
+	partialResults := w.getPartialResult(sc, w.groupKey, w.partialResultsMap) // partialResults is a list of row-result references
 	numRows := chk.NumRows()
 	rows := make([]chunk.Row, 1)
 	for i := 0; i < numRows; i++ {
@@ -352,7 +354,25 @@ func (w *HashAggPartialWorker) updatePartialResult(ctx sessionctx.Context, sc *s
 // shuffleIntermData shuffles the intermediate data of partial workers to corresponded final workers.
 // We only support parallel execution for single-machine, so process of encode and decode can be skipped.
 func (w *HashAggPartialWorker) shuffleIntermData(sc *stmtctx.StatementContext, finalConcurrency int) {
-	// TODO: implement the method body. Shuffle the data to final workers.
+	// implement the method body. Shuffle the data to final workers.
+	// 从w.partialResultsMap中，取出对应部分，分别发给每个final worker
+	groupKeysSlice := make([][]string, finalConcurrency)
+	for groupKey, _ := range w.partialResultsMap {
+		finalWorkerIdx := int(murmur3.Sum32([]byte(groupKey))) % finalConcurrency
+		if groupKeysSlice[finalWorkerIdx] == nil {
+			groupKeysSlice[finalWorkerIdx] = make([]string, 0)
+		}
+		groupKeysSlice[finalWorkerIdx] = append(groupKeysSlice[finalWorkerIdx], groupKey)
+	}
+	for i, groupKeys := range groupKeysSlice {
+		if groupKeys == nil {
+			continue
+		}
+		w.outputChs[i] <- &HashAggIntermData{
+			groupKeys:        groupKeys,
+			partialResultMap: w.partialResultsMap, // 把整个map发给final worker，让final worker取出自己所需部分
+		}
+	}
 }
 
 // getGroupKey evaluates the group items and args of aggregate functions.
@@ -422,12 +442,53 @@ func (w *HashAggFinalWorker) getPartialInput() (input *HashAggIntermData, ok boo
 }
 
 func (w *HashAggFinalWorker) consumeIntermData(sctx sessionctx.Context) (err error) {
-	// TODO: implement the method body. This method consumes the data given by the partial workers.
-	return nil
+	// implement the method body. This method consumes the data given by the partial workers.
+	// need to build w.groupSet
+	// need to build w.partialResultMap
+	var (
+		input            *HashAggIntermData
+		ok               bool
+		intermDataBuffer [][]aggfuncs.PartialResult
+		groupKeys        []string
+		sc               = sctx.GetSessionVars().StmtCtx
+	)
+	for {
+		if input, ok = w.getPartialInput(); !ok {
+			// 要么收到w.finishCh发来的讯号，全局结束
+			// 要么w.inputCh在waitPartialWorkerAndCloseOutputChs()中被关闭，表明所有partial worker都干完活了
+
+			// w.groupSet 与 w.partialResultMap 都已经完成构建
+			return nil
+		}
+		if intermDataBuffer == nil {
+			intermDataBuffer = make([][]aggfuncs.PartialResult, 0, w.maxChunkSize)
+		}
+		// Consume input in batches, size of every batch is less than w.maxChunkSize.
+		for reachEnd := false; !reachEnd; {
+			intermDataBuffer, groupKeys, reachEnd = input.getPartialResultBatch(sc, intermDataBuffer[:0], w.aggFuncs, w.maxChunkSize)
+			w.groupKeys = w.groupKeys[:0]
+			for i := 0; i < len(groupKeys); i++ {
+				w.groupKeys = append(w.groupKeys, []byte(groupKeys[i]))
+			}
+			finalPartialResults := w.getPartialResult(sc, w.groupKeys, w.partialResultMap)
+			for i, groupKey := range groupKeys {
+				if !w.groupSet.Exist(groupKey) {
+					w.groupSet.Insert(groupKey)
+				}
+				prs := intermDataBuffer[i]
+				for j, af := range w.aggFuncs {
+					// 尝试通过finalPartialResults reference，来更新w.partialResultMap
+					if err = af.MergePartialResult(sctx, prs[j], finalPartialResults[i][j]); err != nil {
+						return err
+					}
+				}
+			}
+		}
+	}
 }
 
 func (w *HashAggFinalWorker) getFinalResult(sctx sessionctx.Context) {
-	result, finished := w.receiveFinalResultHolder()
+	result, finished := w.receiveFinalResultHolder() // result 是main thread传回来的placeholder
 	if finished {
 		return
 	}
@@ -435,7 +496,11 @@ func (w *HashAggFinalWorker) getFinalResult(sctx sessionctx.Context) {
 	for groupKey := range w.groupSet {
 		w.groupKeys = append(w.groupKeys, []byte(groupKey))
 	}
+
+	// w.partialResultMap已经在consumeIntermData()中写好
+	// 现在，需要生成partialResults reference，用来更新result
 	partialResults := w.getPartialResult(sctx.GetSessionVars().StmtCtx, w.groupKeys, w.partialResultMap)
+
 	for i := 0; i < len(w.groupSet); i++ {
 		for j, af := range w.aggFuncs {
 			if err := af.AppendFinalResult2Chunk(sctx, partialResults[i][j], result); err != nil {
@@ -453,6 +518,7 @@ func (w *HashAggFinalWorker) getFinalResult(sctx sessionctx.Context) {
 			}
 		}
 	}
+	// 将result传给main thread
 	w.outputCh <- &AfFinalResult{chk: result, giveBackCh: w.finalResultHolderCh}
 }
 
@@ -557,6 +623,8 @@ func (e *HashAggExec) prepare4ParallelExec(ctx context.Context) {
 // 2. partial worker receives the input data, updates the partial results, and shuffle the partial results to the final workers.
 // 3. final worker receives partial results from all the partial workers, evaluates the final results and sends the final results to the main thread.
 func (e *HashAggExec) parallelExec(ctx context.Context, chk *chunk.Chunk) error {
+	// 只prepare一次
+	// 一旦prepare完成，之后上层调用方就可以分批次来取
 	if !e.prepared {
 		e.prepare4ParallelExec(ctx)
 		e.prepared = true
@@ -568,6 +636,7 @@ func (e *HashAggExec) parallelExec(ctx context.Context, chk *chunk.Chunk) error 
 	for {
 		result, ok := <-e.finalOutputCh
 		if !ok {
+			// no more output from final workers
 			e.executed = true
 			if e.isChildReturnEmpty && e.defaultVal != nil {
 				chk.Append(e.defaultVal, 0, 1)
