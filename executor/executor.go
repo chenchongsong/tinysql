@@ -393,7 +393,13 @@ func (e *SelectionExec) Next(ctx context.Context, req *chunk.Chunk) error {
 	for {
 		// Fill in the `req` util it is full or the `inputIter` is fully processed.
 		for ; e.inputRow != e.inputIter.End(); e.inputRow = e.inputIter.Next() {
-			// Your code here.
+			if req.IsFull() {
+				return nil // return with the whole result chunk filled
+			}
+			if e.selected[e.inputRow.Idx()] {
+				// 满足filter筛选条件
+				req.AppendRow(e.inputRow)
+			}
 		}
 		err := Next(ctx, e.children[0], e.childResult)
 		if err != nil {
@@ -403,9 +409,12 @@ func (e *SelectionExec) Next(ctx context.Context, req *chunk.Chunk) error {
 		if e.childResult.NumRows() == 0 {
 			return nil
 		}
-		/* Your code here.
-		   Process and filter the child result using `expression.VectorizedFilter`.
-		 */
+		// Process and filter the child result using `expression.VectorizedFilter`.
+		e.selected, err = expression.VectorizedFilter(e.ctx, e.filters, e.inputIter, e.selected)
+		if err != nil {
+			return err
+		}
+		e.inputRow = e.inputIter.Begin()
 	}
 }
 
@@ -413,6 +422,7 @@ func (e *SelectionExec) Next(ctx context.Context, req *chunk.Chunk) error {
 // For sql with "SETVAR" in filter and "GETVAR" in projection, for example: "SELECT @a FROM t WHERE (@a := 2) > 0",
 // we have to set batch size to 1 to do the evaluation of filter and projection.
 func (e *SelectionExec) unBatchedNext(ctx context.Context, chk *chunk.Chunk) error {
+	// 普通火山（不带向量化）
 	for {
 		for ; e.inputRow != e.inputIter.End(); e.inputRow = e.inputIter.Next() {
 			selected, _, err := expression.EvalBool(e.ctx, e.filters, e.inputRow)
@@ -420,7 +430,8 @@ func (e *SelectionExec) unBatchedNext(ctx context.Context, chk *chunk.Chunk) err
 				return err
 			}
 			if selected {
-				chk.AppendRow(e.inputRow)
+				// 找到满足filter条件的一行了
+				chk.AppendRow(e.inputRow) // 将这一行返回
 				e.inputRow = e.inputIter.Next()
 				return nil
 			}

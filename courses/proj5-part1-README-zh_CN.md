@@ -42,13 +42,24 @@
 在 [executor.go#L346](https://github.com/pingcap-incubator/tinysql/blob/selection/executor/executor.go#L346) 实现了一个较为简单的执行器 `Selection`，它的作用就是根据 `filters` 过滤掉不需要的行并返回给父亲，可以看到它也实现了常见的 `Open`, `Next` 和 `Close` 接口。可以通过阅读 unBatchedNext 理解一下它的功能。
 
 ## 作业描述
-
+- 先完成Project5的Part2与Part3
 - 实现向量化表达式 [vecEvalInt](https://github.com/pingcap-incubator/tinysql/blob/selection/expression/builtin_string_vec.go#L89)，并将 [vectorized](https://github.com/pingcap-incubator/tinysql/blob/selection/expression/builtin_string_vec.go#L84) 的返回值改为 `true`
 - 实现向量化 selection 的 [Next](https://github.com/pingcap-incubator/tinysql/blob/selection/executor/executor.go#L380) 函数。
 
 ## 测试
+在完成Project5 Part1、2、3的基础上
 
-通过通过 `expression` 下所有测试和 `executor` 下面的 `TestJoin` 以及 `TestMergeJoin`。
+- 通过通过 `expression` 下所有测试
+
+```
+go test -v -check.f="TestVectorizedBuiltinString*"
+```
+
+- 通过 `executor` 下面的 `TestJoin` 以及 `TestMergeJoin`。
+
+```
+go test -v -check.f testSuite2
+```
 
 你可以通过 `go test package_path -check.f func_name` 来跑一个具体的函数。以 `TestJoin` 为例，你可以使用 `go test github.com/pingcap/pingcap-incubator/tinysql/executor -check.f TestJoin` 来跑这个具体的函数。同时可以将输出文件重定向至文件中来后续 debug。
 
