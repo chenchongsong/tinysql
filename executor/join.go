@@ -63,8 +63,10 @@ type HashJoinExec struct {
 // `dest` is for Chunk reuse: after join workers process the outer side chunk which is read from `dest`,
 // they'll store the used chunk as `chk`, and then the outer side fetch worker will put new data into `chk` and write `chk` into dest.
 type outerChkResource struct {
-	chk  *chunk.Chunk
+	chk  *chunk.Chunk // 用于存放数据的placeholder
 	dest chan<- *chunk.Chunk
+	// join worker把outerChkResource发送给"outerSideExec worker"，并说 "请通过outerChkResource的dest字段 给我分配任务"
+	// "outerSideExec worker"收到讯息，把任务数据放进chk字段指向的placeholder中，并通过dest字段 把placeholder发还给join worker
 }
 
 // hashjoinWorkerResult stores the result of join workers,
@@ -123,6 +125,7 @@ func (e *HashJoinExec) Open(ctx context.Context) error {
 // step 1. fetch data from build side child and build a hash table;
 // step 2. fetch data from outer child in a background goroutine and outer the hash table in multiple join workers.
 func (e *HashJoinExec) Next(ctx context.Context, req *chunk.Chunk) (err error) {
+	// this is the main thread
 	if !e.prepared {
 		err := e.fetchAndBuildHashTable(ctx)
 		if err != nil {
@@ -146,7 +149,7 @@ func (e *HashJoinExec) Next(ctx context.Context, req *chunk.Chunk) (err error) {
 }
 
 func (e *HashJoinExec) fetchAndBuildHashTable(ctx context.Context) error {
-	// TODO: Implementing the building hash table stage.
+	// Implementing the building hash table stage.
 
 	// In this stage, you'll read the data from the inner side executor of the join operator and
 	// then use its data to build hash table.
@@ -154,7 +157,33 @@ func (e *HashJoinExec) fetchAndBuildHashTable(ctx context.Context) error {
 	// You'll need to store the hash table in `e.rowContainer`
 	// and you can call `newHashRowContainer` in `executor/hash_table.go` to build it.
 	// In this stage you can only assign value for `e.rowContainer` without changing any value of the `HashJoinExec`.
-	return nil
+
+	buildKeyColIdx := make([]int, len(e.innerKeys))
+	for i := range e.innerKeys {
+		buildKeyColIdx[i] = e.innerKeys[i].Index
+	}
+	allTypes := e.innerSideExec.base().retFieldTypes
+	hCtx := &hashContext{
+		allTypes:  allTypes,
+		keyColIdx: buildKeyColIdx,
+	}
+	initList := chunk.NewList(allTypes, e.initCap, e.maxChunkSize)
+	e.rowContainer = newHashRowContainer(e.ctx, int(e.innerSideEstCount), hCtx, initList)
+
+	for {
+		chk := chunk.NewChunkWithCapacity(e.innerSideExec.base().retFieldTypes, e.ctx.GetSessionVars().MaxChunkSize)
+		err := Next(ctx, e.innerSideExec, chk)
+		if err != nil {
+			return err
+		}
+		if chk.NumRows() == 0 {
+			return nil
+		}
+		err = e.rowContainer.PutChunk(chk)
+		if err != nil {
+			return err
+		}
+	}
 }
 
 func (e *HashJoinExec) initializeForOuter() {
@@ -192,6 +221,8 @@ func (e *HashJoinExec) initializeForOuter() {
 // fetchOuterSideChunks get chunks from fetches chunks from the big table in a background goroutine
 // and sends the chunks to multiple channels which will be read by multiple join workers.
 func (e *HashJoinExec) fetchOuterSideChunks(ctx context.Context) {
+	// this is the "outerSideExec worker"
+	// 负责分配任务给join workers
 	for {
 		var outerSideResource *outerChkResource
 		var ok bool
@@ -199,12 +230,17 @@ func (e *HashJoinExec) fetchOuterSideChunks(ctx context.Context) {
 		case <-e.closeCh:
 			return
 		case outerSideResource, ok = <-e.outerChkResourceCh:
+			// 收到一个outerSideResource 说明有空闲的join worker
 			if !ok {
 				return
 			}
 		}
 		outerSideResult := outerSideResource.chk
-		err := Next(ctx, e.outerSideExec, outerSideResult)
+
+		// outerSide也是一个table，此时还未算好
+		// 需要调用e.outerSideExec的Next不停地 [得到几行 + 把这几行分配给某个空闲的join worker]
+
+		err := Next(ctx, e.outerSideExec, outerSideResult) // 把这几行写进chk
 		if err != nil {
 			e.joinResultCh <- &hashjoinWorkerResult{
 				err: err,
@@ -216,7 +252,7 @@ func (e *HashJoinExec) fetchOuterSideChunks(ctx context.Context) {
 			return
 		}
 
-		outerSideResource.dest <- outerSideResult
+		outerSideResource.dest <- outerSideResult // 把chk 通过outerResultChs[i] 转发给join worker i
 	}
 }
 
@@ -241,15 +277,56 @@ func (e *HashJoinExec) fetchAndProbeHashTable(ctx context.Context) {
 }
 
 func (e *HashJoinExec) runJoinWorker(workerID uint, outerKeyColIdx []int) {
-	// TODO: Implement the worker of probing stage.
+	// Implement the worker of probing stage.
 
 	// In this method, you read the data from the channel e.outerResultChs[workerID].
 	// Then use `e.join2Chunk` method get the joined result `joinResult`,
 	// and put the `joinResult` into the channel `e.joinResultCh`.
 
 	// You may pay attention to:
-	// 
+	//
 	// - e.closeCh, this is a channel tells that the join can be terminated as soon as possible.
+	var (
+		outerSideResult *chunk.Chunk
+		selected        = make([]bool, 0, chunk.InitialCapacity)
+	)
+	ok, joinResult := e.getNewJoinResult(workerID)
+	if !ok {
+		return
+	}
+
+	// Read and filter outerSideResult, and join the outerSideResult with the build side rows.
+	emptyOuterSideResult := &outerChkResource{
+		dest: e.outerResultChs[workerID],
+	}
+	hCtx := &hashContext{
+		allTypes:  retTypes(e.outerSideExec),
+		keyColIdx: outerKeyColIdx,
+	}
+	for ok := true; ok; {
+		select {
+		case <-e.closeCh:
+			return
+		case outerSideResult, ok = <-e.outerResultChs[workerID]: // 索要新任务
+		}
+		if !ok {
+			break
+		}
+		ok, joinResult = e.join2Chunk(workerID, outerSideResult, hCtx, joinResult, selected)
+		if !ok {
+			break
+		}
+		outerSideResult.Reset()
+		emptyOuterSideResult.chk = outerSideResult // 将chk placeholder置空
+		e.outerChkResourceCh <- emptyOuterSideResult // 声明我手上任务做完了 又available了
+	}
+	// 需要我做的全部任务，我都做完了
+	// 将整理好的joinResult 返回给main thread
+	if joinResult == nil {
+		return
+	} else if joinResult.err != nil || (joinResult.chk != nil && joinResult.chk.NumRows() > 0) {
+		e.joinResultCh <- joinResult
+	}
 }
 
 func (e *HashJoinExec) getNewJoinResult(workerID uint) (bool, *hashjoinWorkerResult) {

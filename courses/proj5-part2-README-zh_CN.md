@@ -82,11 +82,15 @@ Outer Fetcher 是一个后台 goroutine，他的主要计算逻辑在 fetchOuter
 
 ## 作业
 
-实现 [runJoinWorker](https://github.com/pingcap-incubator/tinysql/blob/hash-join/executor/join.go#L243) 以及 [fetchAndBuildHashTable](https://github.com/pingcap-incubator/tinysql/blob/hash-join/executor/join.go#L148)。
+实现 [runJoinWorker](https://github.com/pingcap-incubator/tinysql/blob/course/executor/join.go#L243) 以及 [fetchAndBuildHashTable](https://github.com/pingcap-incubator/tinysql/blob/course/executor/join.go#L148)。
 
 ## 测试
 
-通过 `join_test.go` 下的所有测试
+通过 `join_test.go` 下的所有测试 (除了TestJoin)
+```
+cd executor
+go test -v -check.f="testSuiteJoin*"
+```
 
 ## 评分
 
