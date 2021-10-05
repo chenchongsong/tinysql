@@ -53,6 +53,10 @@ func (s *joinReorderDPSolver) solve(joinGroup []LogicalPlan, eqConds []expressio
 		})
 	}
 	adjacents := make([][]int, len(s.curJoinGroup))
+	// 若adjacents[i] == [1, 2]，则节点i与节点1相连，且节点i与节点2相连
+	// 一个节点表示一个table
+	// 一条边通常表示一个形如"t1 join t2 on t1.id = t2.id"的这样一个condition
+	// 形如"t1 join t2 on t1.val > t2.val"这样的condition，会被放入totalNonEqEdges中, 不参与图的构建
 	totalEqEdges := make([]joinGroupEqEdge, 0, len(eqConds))
 	addEqEdge := func(node1, node2 int, edgeContent *expression.ScalarFunction) {
 		totalEqEdges = append(totalEqEdges, joinGroupEqEdge{
@@ -100,11 +104,11 @@ func (s *joinReorderDPSolver) solve(joinGroup []LogicalPlan, eqConds []expressio
 	nodeID2VisitID := make([]int, len(joinGroup))
 	var joins []LogicalPlan
 	// BFS the tree.
-	for i := 0; i < len(joinGroup); i++ {
+	for i := 0; i < len(joinGroup); i++ {  // 枚举每一个节点(i.e. table)
 		if visited[i] {
 			continue
 		}
-		visitID2NodeID := s.bfsGraph(i, visited, adjacents, nodeID2VisitID)
+		visitID2NodeID := s.bfsGraph(i, visited, adjacents, nodeID2VisitID)  // 以节点i为根，BFS所在的连通块(sub graph)
 		nodeIDMask := uint(0)
 		for _, nodeID := range visitID2NodeID {
 			nodeIDMask |= 1 << uint(nodeID)
@@ -123,7 +127,7 @@ func (s *joinReorderDPSolver) solve(joinGroup []LogicalPlan, eqConds []expressio
 			subNonEqEdges = append(subNonEqEdges, totalNonEqEdges[i])
 			totalNonEqEdges = append(totalNonEqEdges[:i], totalNonEqEdges[i+1:]...)
 		}
-		// Do DP on each sub graph.
+		// Do DP on each sub graph. 对每个连通块做DP
 		join, err := s.dpGraph(visitID2NodeID, nodeID2VisitID, joinGroup, totalEqEdges, subNonEqEdges)
 		if err != nil {
 			return nil, err
@@ -256,9 +260,9 @@ func (s *joinReorderDPSolver) newJoinWithEdge(leftPlan, rightPlan LogicalPlan, e
 
 // Make cartesian join as bushy tree.
 func (s *joinReorderDPSolver) makeBushyJoin(cartesianJoinGroup []LogicalPlan, otherConds []expression.Expression) LogicalPlan {
-	for len(cartesianJoinGroup) > 1 {
+	for len(cartesianJoinGroup) > 1 {  // 不断地合并，直到group里只剩下一个元素
 		resultJoinGroup := make([]LogicalPlan, 0, len(cartesianJoinGroup))
-		for i := 0; i < len(cartesianJoinGroup); i += 2 {
+		for i := 0; i < len(cartesianJoinGroup); i += 2 {  // 合并元素0与1, 2与3, 4与5... 以此类推; 此for循环后，group的元素个数减半
 			if i+1 == len(cartesianJoinGroup) {
 				resultJoinGroup = append(resultJoinGroup, cartesianJoinGroup[i])
 				break

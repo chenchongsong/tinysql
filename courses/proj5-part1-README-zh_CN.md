@@ -33,11 +33,11 @@
 
 ### 向量化表达式
 
-在 [builtin\_string\_vec.go](https://github.com/pingcap-incubator/tinysql/blob/selection/expression/builtin_string_vec.go) 有三个较为简单的向量化的 string 类型函数，可以结合[向量化的进行计算](https://docs.google.com/document/d/1JKP9YS3wYsuXsYhDgVepJt5y72K6_WxhUVfOLyjpAjc/edit#heading=h.66r4twnr3b1c)阅读。
+- 在 [builtin\_string\_vec.go](https://github.com/pingcap-incubator/tinysql/blob/selection/expression/builtin_string_vec.go) 有三个较为简单的向量化的 string 类型函数
+- 请结合[向量化的进行计算](https://docs.google.com/document/d/1JKP9YS3wYsuXsYhDgVepJt5y72K6_WxhUVfOLyjpAjc/edit#heading=h.66r4twnr3b1c)阅读
 
 ### 火山模型
--
-我们以 Selection 为例来介绍代码。
+- 我们以 Selection 为例来介绍代码。
 
 在 [executor.go#L346](https://github.com/pingcap-incubator/tinysql/blob/selection/executor/executor.go#L346) 实现了一个较为简单的执行器 `Selection`，它的作用就是根据 `filters` 过滤掉不需要的行并返回给父亲，可以看到它也实现了常见的 `Open`, `Next` 和 `Close` 接口。可以通过阅读 unBatchedNext 理解一下它的功能。
 

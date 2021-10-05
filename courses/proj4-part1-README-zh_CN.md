@@ -33,7 +33,7 @@ func findBestTask(p LogicalPlan, prop OrderProp) PhysicalPlan {
 	
 	bestPlanTree := a plan with maximum cost
 	
-	for _, pp := range selfPhysicalPlans {
+	for _, pp := range selfPhysicalPlans {  // 枚举当前树节点的所有物理执行计划
 	
 		childProps := pp.GetChildProps(prop)
 		childPlans := make([]PhysicalPlan, 0, len(p.children))
@@ -58,9 +58,23 @@ func findBestTask(p LogicalPlan, prop OrderProp) PhysicalPlan {
 
 [TiDB Cascades Planner 原理解析](https://pingcap.com/blog-cn/tidb-cascades-planner/) 这篇文章对 Cascades 在 TiDB 中的实现做了比较细致的讲解，大家可以通过这篇博客结合 TinySQL 的代码进行学习。TiDB 和 TinySQL 在关键概念释义上是完全一样的。概念名词可以直接在 TinySQL 找到。
 
+这篇文章主要讲了Volcano Optimizer与Cascades Optmizer
+
+### Volcano Optimizer
+1. 使用两阶段的优化，即逻辑优化[DoOptimize](https://github.com/pingcap-incubator/tinysql/blob/master/planner/core/optimizer.go#L76) 与物理优化[physicalOptimize (findBestTask)](https://github.com/pingcap-incubator/tinysql/blob/master/planner/core/optimizer.go#L112) 。
+2. 实现的代码位于`planner/core`目录下面
+3. 逻辑优化阶段，所有的优化规则都按照同一个固定的顺序依次去看是否能够作用于当前的逻辑执行计划，例如最先执行的规则总是列剪裁。且每个规则至多只会在被顺序遍历到的时候执行一次
+4. 采用自顶向下的动态规划算法（记忆化搜索）
+
+### Cascades Optimizer
+1. 以Group为基础建立搜索空间，可以重复应用同一个Pattern & Rule来多次优化。TiDB的实现中包含`Preprocessing Phase`、`Exploration Phase`、`Implementation Phase`三个阶段
+2. 实现的代码位于`planner/cascades`目录下面
+
 ## 作业
 
-完成 `rule_predicate_push_down.go` 中的 TODO 内容。以及 `transformation_rules.go` 中的 TODO 内容。
+1. 完成 `planner/core/rule_predicate_push_down.go` 中的 TODO 内容。 `PredicatePushDown`
+
+2. 完成 `planner/cascades/transformation_rules.go` 中的 TODO 内容。`PushSelDownAggregation.OnTransform`与`MergeAggregationProjection.OnTransform`
 
 ## 评分
 

@@ -87,6 +87,8 @@ func (b *builtinLengthSig) vectorized() bool {
 // vecEvalInt evaluates a builtinLengthSig.
 // See https://dev.mysql.com/doc/refman/5.7/en/string-functions.html
 func (b *builtinLengthSig) vecEvalInt(input *chunk.Chunk, result *chunk.Column) error {
+	// 输入的batched input含n个string
+	// 所以我们相应地向result中写入n个int, 表示这n个string的长度
 	n := input.NumRows()
 	buf, err := b.bufAllocator.get(types.ETString, n)
 	if err != nil {

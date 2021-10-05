@@ -8,6 +8,9 @@
 
 当结束启发式规则的筛选之后，我们仍然可能剩余多组索引等待筛选我们就需要知道每个索引究竟会过滤多少行数据。在 TiDB 中我们使用直方图和 Count-Min Sketch 来存储的统计信息，[TiDB 源码阅读系列文章（十二）统计信息（上）](https://pingcap.com/blog-cn/tidb-source-code-reading-12/) 中，我们对直方图和 Count-Min Sketch 的实现原理做了比较详细的介绍。
 
+- 范围查询用直方图来预估 (e.g. 估计一张表里满足 a > 10 的行数)
+- 等值查询用cmsketch来预估 (e.g. 估计一张表里满足 a == 10 的行数)
+
 这里我们需要完成 `cmsketch.go` 中的 TODO 内容，并通过 `cmsketch_test.go` 中的测试
 
 ```

@@ -243,16 +243,16 @@ func compareBool(l, r bool) int {
 func compareCandidates(lhs, rhs *candidatePath) int {
 	setsResult, comparable := compareColumnSet(lhs.columnSet, rhs.columnSet)
 	if !comparable {
-		return 0
+		return 0  // 无法判断谁一定更优秀
 	}
 	scanResult := compareBool(lhs.isSingleScan, rhs.isSingleScan)
 	matchResult := compareBool(lhs.isMatchProp, rhs.isMatchProp)
 	sum := setsResult + scanResult + matchResult
 	if setsResult >= 0 && scanResult >= 0 && matchResult >= 0 && sum > 0 {
-		return 1
+		return 1  // lhs一定更优
 	}
 	if setsResult <= 0 && scanResult <= 0 && matchResult <= 0 && sum < 0 {
-		return -1
+		return -1 // rhs一定更优
 	}
 	return 0
 }
@@ -309,6 +309,7 @@ func (ds *DataSource) skylinePruning(prop *property.PhysicalProperty) []*candida
 				// 3. This index is forced to choose.
 				// 4. The needed columns are all covered by index columns(and handleCol).
 				currentCandidate = ds.getIndexCandidate(path, prop, coveredByIdx)
+				// 注意currentCandidate.isSingleScan的值 由此处的coveredByIdx决定
 			} else {
 				continue
 			}

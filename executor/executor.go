@@ -422,7 +422,7 @@ func (e *SelectionExec) Next(ctx context.Context, req *chunk.Chunk) error {
 // For sql with "SETVAR" in filter and "GETVAR" in projection, for example: "SELECT @a FROM t WHERE (@a := 2) > 0",
 // we have to set batch size to 1 to do the evaluation of filter and projection.
 func (e *SelectionExec) unBatchedNext(ctx context.Context, chk *chunk.Chunk) error {
-	// 普通火山（不带向量化）
+	// 普通火山（不带向量化）(一行一行地对外吐出结果)
 	for {
 		for ; e.inputRow != e.inputIter.End(); e.inputRow = e.inputIter.Next() {
 			selected, _, err := expression.EvalBool(e.ctx, e.filters, e.inputRow)
@@ -436,11 +436,12 @@ func (e *SelectionExec) unBatchedNext(ctx context.Context, chk *chunk.Chunk) err
 				return nil
 			}
 		}
+		// 自己手上的数据吐完了，再从儿子那里取一批数据(一行或多行)
 		err := Next(ctx, e.children[0], e.childResult)
 		if err != nil {
 			return err
 		}
-		e.inputRow = e.inputIter.Begin()
+		e.inputRow = e.inputIter.Begin()  // inputRow指向childResult的第一行 (inputIter始终与childResult绑定)
 		// no more data.
 		if e.childResult.NumRows() == 0 {
 			return nil
